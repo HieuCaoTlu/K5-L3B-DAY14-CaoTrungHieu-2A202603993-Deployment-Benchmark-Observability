@@ -385,3 +385,25 @@ Total messages: 10
   Result: 12/12 tiêu chí đạt · 43/43 checks passed
   🎉 PASS 12/12 — PRODUCTION READY! Deploy nào!
 ```
+
+## Part 7
+
+### Exercise 7.1
+
+* Counter: `http_requests_total{method="POST",route="/ask",status="200"}`, Gauge: `agent_in_flight_requests`, Histogram: `http_request_duration_seconds_bucket{le="0.3",method="POST",route="/ask"}`
+
+* Nếu dùng URL thật làm label, mỗi URL lạ bot quét (`/wp-admin`, `/.env`, `/a1b2c3`...) tạo ra một time series mới → cardinality bùng nổ, Prometheus hết RAM. Dùng `route.path` thì số label cố định, URL lạ gộp chung vào `unmatched`
+
+* Đã thêm `agent_question_length_chars` (Histogram, bucket 20 → 2000 ký tự), không dùng label vì độ dài có vô số giá trị
+
+```
+agent_question_length_chars_bucket{le="50.0"} 1.0
+agent_question_length_chars_count 1.0
+agent_question_length_chars_sum 40.0
+```
+
+### Exercise 7.2 và 7.3
+
+* Kết quả load test, tail latency và eval nằm trong `BENCHMARK_REPORT.md` mục 2 và 3, file JSON trong `06-lab-complete/benchmark-observability/develop/reports/`
+
+* CI quality gate: `.github/workflows/eval.yml`
