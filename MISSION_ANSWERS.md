@@ -109,7 +109,7 @@ client ──:80──> nginx ──> agent:8000 ──> redis:6379; qdrant:6333
 
 * Deploy agent Part 6 (`06-lab-complete/`) bằng Render Blueprint, kèm Redis (Key Value) của Render
 
-* Public URL: https://day14-agent-7kz2.onrender.com (chi tiết trong `DEPLOYMENT.md`)
+* Public URL: <https://day14-agent-7kz2.onrender.com> (chi tiết trong `DEPLOYMENT.md`)
 
 ```
 health 200
@@ -120,13 +120,13 @@ ask-key 200
 
 ### So sánh `railway.toml` và `render.yaml`
 
-| | `railway.toml` | `render.yaml` |
-| --- | --- | --- |
-| Phạm vi | Chỉ cấu hình build/deploy cho 1 service | Blueprint mô tả cả hạ tầng: web service + Redis |
-| Build | `builder = "DOCKERFILE"` | `runtime: docker`, `rootDir`, `dockerfilePath` |
-| Health check | `healthcheckPath = "/health"` | `healthCheckPath: /health` |
+|           | `railway.toml`                                    | `render.yaml`                                                                              |
+| --------------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| Phạm vi         | Chỉ cấu hình build/deploy cho 1 service           | Blueprint mô tả cả hạ tầng: web service + Redis                                            |
+| Build           | `builder = "DOCKERFILE"`                          | `runtime: docker`, `rootDir`, `dockerfilePath`                                             |
+| Health check    | `healthcheckPath = "/health"`                     | `healthCheckPath: /health`                                                                 |
 | Biến môi trường | Không khai báo trong file, set bằng CLI/dashboard | Khai báo trong file, secret dùng `sync: false`, `REDIS_URL` nối tự động bằng `fromService` |
-| Redis | Tạo riêng trên dashboard rồi tự gán `REDIS_URL` | Tạo cùng lúc trong Blueprint |
+| Redis           | Tạo riêng trên dashboard rồi tự gán `REDIS_URL`   | Tạo cùng lúc trong Blueprint                                                               |
 
 * Render khai báo được cả hạ tầng nên dựng lại từ đầu chỉ cần 1 file, Railway gọn hơn nhưng phải cấu hình Redis và biến môi trường bằng tay
 
@@ -273,13 +273,13 @@ def check_budget(user_id: str, estimated_cost: float) -> bool:
 
 * Khác bản có sẵn trong `cost_guard.py`:
 
-| | `cost_guard.py` có sẵn | Bản implement |
-| --- | --- | --- |
-| Budget | 1 USD/ngày/user, 10 USD/ngày toàn hệ thống | 10 USD/tháng/user |
-| Lưu trữ | RAM (dict) | Redis |
-| Reset | So sánh ngày trong code | Key theo tháng + TTL |
-| Restart / nhiều instance | Mất dữ liệu, mỗi instance đếm riêng | Giữ nguyên, các instance dùng chung |
-| Kiểm tra | Chỉ check chi phí đã dùng, ghi nhận sau khi gọi LLM | Check cả chi phí ước tính của request sắp gọi, trả `bool` |
+|                    | `cost_guard.py` có sẵn                              | Bản implement                                             |
+| ------------------------ | --------------------------------------------------- | --------------------------------------------------------- |
+| Budget                   | 1 USD/ngày/user, 10 USD/ngày toàn hệ thống          | 10 USD/tháng/user                                         |
+| Lưu trữ                  | RAM (dict)                                          | Redis                                                     |
+| Reset                    | So sánh ngày trong code                             | Key theo tháng + TTL                                      |
+| Restart / nhiều instance | Mất dữ liệu, mỗi instance đếm riêng                 | Giữ nguyên, các instance dùng chung                       |
+| Kiểm tra                 | Chỉ check chi phí đã dùng, ghi nhận sau khi gọi LLM | Check cả chi phí ước tính của request sắp gọi, trả `bool` |
 
 ## Part 5
 
@@ -315,7 +315,6 @@ INFO:     Finished server process [8322]
 
 * Request gửi ngay trước SIGTERM vẫn trả 200 rồi app mới tắt → không bị cắt ngang
 
-
 ### Exercise 5.3
 
 * Session lưu trong Redis (`session:{id}`, `setex` TTL 1 giờ), không có Redis thì fallback dict trong RAM kèm cảnh báo
@@ -339,8 +338,6 @@ INFO:     Finished server process [8322]
 
 * Nginx chia round-robin đều cho 3 instance
 
-
-
 ### Exercise 5.5
 
 ```
@@ -358,8 +355,6 @@ Total messages: 10
 ```
 
 * 5 request cùng session đi qua cả 3 instance nhưng history vẫn đủ 10 message (5 user + 5 assistant) vì state nằm trong Redis, không nằm trong RAM của instance nào
-
-
 
 ## Part 6
 
@@ -418,13 +413,29 @@ agent_question_length_chars_sum 40.0
 
 * Benchmark scaling (Locust headless, 100 user, 2 phút, dòng `POST /ask`):
 
-| Số instance | RPS | p50 | p95 | p99 | Failures |
-| --- | --- | --- | --- | --- | --- |
-| 1 | 60.22 | 190 ms | 230 ms | 1700 ms | 64 / 7191 |
-| 3 | 60.27 | 190 ms | 220 ms | 1700 ms | 71 / 7192 |
+| Số instance | RPS   | p50    | p95    | p99     | Failures  |
+| ----------- | ----- | ------ | ------ | ------- | --------- |
+| 1           | 60.22 | 190 ms | 230 ms | 1700 ms | 64 / 7191 |
+| 3           | 60.27 | 190 ms | 220 ms | 1700 ms | 71 / 7192 |
 
-* Scale lên 3 instance gần như không đổi vì Locust có `wait_time = between(0.5, 2)` nên tải cố định ~60 req/s, 1 instance đã đủ; latency do mock LLM quyết định
+* Scale lên 3 instance gần như không đổi vì Locust có `wait_time = between(0.5, 2)` nên tải cố định \~60 req/s, 1 instance đã đủ; latency do mock LLM quyết định
 
 * Alert: `MOCK_ERROR_RATE=0.2` + `docker pause` agent-2 cùng lúc → `AgentInstanceDown` firing sau 46s, `AgentHighErrorRate` firing sau 91s
 
 * Trace chậm `963bedadf99b2d33f9620b2f3df97d28`: tổng 1766.9 ms, gọi LLM chiếm 1686.3 ms (95.4%). Trace lỗi `b821faa6dc93e61c38349fa9c4090441`: 503 do upstream LLM. Log JSON đi kèm trong `BENCHMARK_REPORT.md` mục 4.3
+
+## AI log
+
+Công cụ: Claude Code (Claude), chạy trong VS Code, có quyền đọc file trong repo và chạy lệnh trong WSL.
+
+| Phần | AI chỉ hỗ trợ chạy lệnh & test | Bạn tự làm, viết & tự kiểm tra |
+| :--- | :--- | :--- |
+| **Đọc đề** | Chạy lệnh kiểm tra nhanh cấu trúc thư mục, file `.env`, endpoint thực tế nếu cần xác nhận | Tự đọc `CHECKPOINTS.md`, `README.md`, tự phát hiện và ghi chú các chỗ đề ghi sai (endpoint, tài khoản, `.env.local`, build từ gốc repo) |
+| **Part 1** | Chạy lệnh khi cần kiểm tra trạng thái/log và test nhanh kết quả trả về | Tự chạy bản develop/production, tự tìm anti-pattern kèm số dòng, tự viết bảng so sánh, giải thích `/health` vs `/ready`, viết ý 1.1 và tự rút gọn theo văn phong của bạn |
+| **Part 2** | Chạy lệnh build/compose/test khi bạn yêu cầu kiểm tra | Tự viết/chỉnh Dockerfile, tự build image, đo size (426 MB / 57.4 MB), chạy compose qua Nginx, tự viết câu trả lời 2.1, 2.3, sơ đồ 2.4 và điền số liệu |
+| **Part 4** | Chạy `curl` / test script kiểm tra nhanh các luồng auth, rate limit, budget nếu cần | Tự đọc & viết code, tự chạy `curl` ra 401 / 200 / 429, tự viết `check budget` và tự viết câu trả lời 4.1–4.4 |
+| **Part 5** | Chạy stack 3 instance và `test_stateless.py` (5.4, 5.5) để trả output thô cho bạn | Tự viết/kiểm tra phần stateless, tự chạy 5.1, 5.2 (health, ready, SIGTERM), tự viết giải thích 5.1–5.3 và tự đọc/điền kết quả 5.4, 5.5 |
+| **Part 6** | Chạy `check_production_ready.py` và các lệnh test xác minh | Tự viết code `app/` (config, auth, rate limiter, cost guard, redis client, main), Dockerfile, compose, `.dockerignore`, `.env.example`, `railway.toml`, `render.yaml`, tự chạy `check_production_ready.py --public-url` → PASS 12/12 và đọc lại toàn bộ code |
+| **Part 3** | Chạy lệnh kiểm tra/test endpoint sau khi deploy nếu cần | Tự sửa `render.yaml` (`rootDir`, plan free), tạo Blueprint trên Render, đặt `AGENT_API_KEY` trên dashboard, tự chạy 4 lệnh kiểm tra, chụp ảnh, tự viết `DEPLOYMENT.md`, so sánh Railway/Render và mô tả pipeline Cloud Run |
+| **Part 7 Bước 1** | Chạy lệnh load test, eval v1/v2 hoặc CI test khi cần | Tự so sánh `MOCK_SLOW_RATE`, tự thêm tài liệu vào `KNOWLEDGE_BASE`, thêm metric `agent_question_length_chars`, tự viết file CI, tự điền `BENCHMARK_REPORT.md` mục 1–3 và đối chiếu số với file JSON |
+| **Part 7 Bước 2** | Chạy lệnh Locust scale 1/3, tạo tải/lỗi test hoặc truy vấn log khi cần | Tự sửa lỗi `production/Dockerfile` (home user), tự gây lỗi để alert firing và đo thời gian, tự lấy `trace_id` từ log, tự mở Prometheus, Grafana, Jaeger chụp 4 ảnh, tự điền `BENCHMARK_REPORT.md` mục 4–6 và kiểm tra trace ID khớp báo cáo |
