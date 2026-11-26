@@ -103,6 +103,43 @@ client ──:80──> nginx ──> agent:8000 ──> redis:6379; qdrant:6333
 {"status":"ok","uptime_seconds":39.1,"version":"2.0.0","timestamp":"2026-11-26T08:06:38.235180"}
 ```
 
+## Part 3
+
+### Exercise 3.2 (Render)
+
+* Deploy agent Part 6 (`06-lab-complete/`) bằng Render Blueprint, kèm Redis (Key Value) của Render
+
+* Public URL: https://day14-agent-7kz2.onrender.com (chi tiết trong `DEPLOYMENT.md`)
+
+```
+health 200
+ready 200
+ask-nokey 401
+ask-key 200
+```
+
+### So sánh `railway.toml` và `render.yaml`
+
+| | `railway.toml` | `render.yaml` |
+| --- | --- | --- |
+| Phạm vi | Chỉ cấu hình build/deploy cho 1 service | Blueprint mô tả cả hạ tầng: web service + Redis |
+| Build | `builder = "DOCKERFILE"` | `runtime: docker`, `rootDir`, `dockerfilePath` |
+| Health check | `healthcheckPath = "/health"` | `healthCheckPath: /health` |
+| Biến môi trường | Không khai báo trong file, set bằng CLI/dashboard | Khai báo trong file, secret dùng `sync: false`, `REDIS_URL` nối tự động bằng `fromService` |
+| Redis | Tạo riêng trên dashboard rồi tự gán `REDIS_URL` | Tạo cùng lúc trong Blueprint |
+
+* Render khai báo được cả hạ tầng nên dựng lại từ đầu chỉ cần 1 file, Railway gọn hơn nhưng phải cấu hình Redis và biến môi trường bằng tay
+
+### Exercise 3.3 (Cloud Run)
+
+* `cloudbuild.yaml` chạy 4 bước nối tiếp: test (pytest) → build image Docker (tag theo commit SHA + `latest`, dùng cache) → push lên Container Registry → `gcloud run deploy`
+
+* Deploy ở `asia-southeast1`, min 1 instance để tránh cold start, max 10, 512Mi RAM, secret `OPENAI_API_KEY` lấy từ Secret Manager
+
+* Test fail thì các bước sau không chạy, nên code lỗi không lên production
+
+* `service.yaml` mô tả service Cloud Run (image, tài nguyên, autoscaling, probe) dưới dạng khai báo
+
 ## Part 4
 
 ### Exercise 4.1
@@ -325,6 +362,8 @@ Total messages: 10
 
 
 ## Part 6
+
+* Image `prod-check` (multi-stage, `python:3.11-slim`): 238 MB, đo bằng `check_production_ready.py`
 
 * `python check_production_ready.py` (chạy trong WSL, có Docker):
 
