@@ -407,3 +407,24 @@ agent_question_length_chars_sum 40.0
 * Kết quả load test, tail latency và eval nằm trong `BENCHMARK_REPORT.md` mục 2 và 3, file JSON trong `06-lab-complete/benchmark-observability/develop/reports/`
 
 * CI quality gate: `.github/workflows/eval.yml`
+
+### Exercise 7.4 – 7.7
+
+* Stack chạy bằng `docker compose -p k5-day14-observability`: agent v2 + Nginx + Prometheus + Grafana + Jaeger + Locust
+
+* Sửa `production/Dockerfile`: user `agent` có home là `/app` nên Python không tìm thấy package cài bằng `--user` ở `/home/agent/.local` (lỗi `No module named 'uvicorn'`, agent restart liên tục), đổi home thành `/home/agent`
+
+* Chép phần sửa `KNOWLEDGE_BASE` từ `develop/` sang `production/utils/mock_llm.py`
+
+* Benchmark scaling (Locust headless, 100 user, 2 phút, dòng `POST /ask`):
+
+| Số instance | RPS | p50 | p95 | p99 | Failures |
+| --- | --- | --- | --- | --- | --- |
+| 1 | 60.22 | 190 ms | 230 ms | 1700 ms | 64 / 7191 |
+| 3 | 60.27 | 190 ms | 220 ms | 1700 ms | 71 / 7192 |
+
+* Scale lên 3 instance gần như không đổi vì Locust có `wait_time = between(0.5, 2)` nên tải cố định ~60 req/s, 1 instance đã đủ; latency do mock LLM quyết định
+
+* Alert: `MOCK_ERROR_RATE=0.2` + `docker pause` agent-2 cùng lúc → `AgentInstanceDown` firing sau 46s, `AgentHighErrorRate` firing sau 91s
+
+* Trace chậm `963bedadf99b2d33f9620b2f3df97d28`: tổng 1766.9 ms, gọi LLM chiếm 1686.3 ms (95.4%). Trace lỗi `b821faa6dc93e61c38349fa9c4090441`: 503 do upstream LLM. Log JSON đi kèm trong `BENCHMARK_REPORT.md` mục 4.3

@@ -70,61 +70,75 @@ File `.github/workflows/eval.yml`: mỗi pull request chạy agent v2 rồi `run
 
 ## 4. Observability stack (production)
 
+Stack: `docker compose -p k5-day14-observability`, agent v2 (2 instance) + Nginx + Prometheus + Grafana + Jaeger + Locust. Tải nền: Locust headless 30 user.
+
 ### 4.1 Screenshot
 
-- [ ] Dashboard Grafana khi đang có tải (thấy rõ Golden Signals)
-- [ ] Một trace chậm trong Jaeger (thấy span nào chiếm thời gian)
-- [ ] Một trace lỗi trong Jaeger (có event `exception`)
-- [ ] Trang Alerts của Prometheus với ít nhất 1 alert đang **firing**
+- [Dashboard Grafana khi đang có tải](screenshots/grafana-dashboard.png)
+- [Trace chậm trong Jaeger](screenshots/jaeger-slow-trace.png)
+- [Trace lỗi trong Jaeger](screenshots/jaeger-error-trace.png)
+- [Prometheus Alerts: AgentHighErrorRate + AgentInstanceDown cùng firing](screenshots/prometheus-alert-firing.png)
 
 ### 4.2 Thí nghiệm "phá hệ thống"
 
+Thí nghiệm A và D chạy cùng lúc, T0 = 09:26:15 UTC (26/11/2026). Thời gian đo bằng cách poll `localhost:9090/api/v1/alerts` mỗi 5 giây.
+
 | # | Thay đổi | Alert nào firing | Thời gian từ lúc đổi → firing | Panel nào phản ánh rõ nhất |
 |---|---|---|---|---|
-| A | `MOCK_ERROR_RATE=0.2` | | | |
-| B | `MOCK_SLOW_RATE=0.3` | | | |
-| C | `LLM_MODEL=mock-llm-large` | | | |
-| D | `docker pause` 1 instance | | | |
-| E | `AGENT_VERSION=v1` | | | |
+| A | `MOCK_ERROR_RATE=0.2` | `AgentHighErrorRate` | 91 s (rule `for: 1m` + cửa sổ `rate[1m]` + chu kỳ scrape/evaluate) | Error rate `/ask` |
+| B | `MOCK_SLOW_RATE=0.3` | chưa chạy | | |
+| C | `LLM_MODEL=mock-llm-large` | chưa chạy | | |
+| D | `docker pause` 1 instance (`agent-2`) | `AgentInstanceDown` | 46 s (rule `for: 30s` + chu kỳ scrape) | Target up / số instance |
+| E | `AGENT_VERSION=v1` | chưa chạy | | |
+
+Trong lúc chạy A + D, `LLMCostBurnRateHigh` cũng đang firing (tải nền liên tục làm chi phí ước tính vượt 2 USD/giờ).
 
 **Thí nghiệm E không làm alert nào firing. Bạn sẽ phát hiện loại sự cố này trong production bằng cách nào?**
 
-...
+v1 vẫn trả 200 nhanh nên các alert về lỗi/latency không bắt được, nhưng câu trả lời sai. Cần giám sát chất lượng: chạy eval golden dataset định kỳ (hoặc trong CI trước khi deploy) và alert khi accuracy giảm; theo dõi metric `agent_info{version}` để thấy version đang chạy; theo dõi tín hiệu gián tiếp như số token / câu giảm đột ngột hoặc feedback xấu của user.
 
 ### 4.3 Debug bằng trace
 
 Chọn 1 trace chậm nhất bạn tìm được:
 
-- `trace_id`: ...
-- Tổng thời gian: ... ms
-- Span chiếm nhiều thời gian nhất: ... (... ms, ...%)
+- `trace_id`: `963bedadf99b2d33f9620b2f3df97d28`
+- Tổng thời gian: 1766.9 ms
+- Span chiếm nhiều thời gian nhất: gọi LLM (1686.3 ms, 95.4%)
 - Dòng log tương ứng (grep theo `trace_id`):
 
 ```json
+{"ts": "2026-11-26T09:27:27.424075+00:00", "level": "INFO", "service": "observable-agent", "instance": "bc825ceafa2f", "event": "llm_call", "trace_id": "963bedadf99b2d33f9620b2f3df97d28", "span_id": "c908ce9f38223afa", "request_id": "923f26510a9c", "model": "mock-llm-small", "agent_version": "v2", "input_tokens": 95, "output_tokens": 55, "cost_usd": 4.7e-05, "llm_ms": 1686.3}
+{"ts": "2026-11-26T09:27:27.424308+00:00", "level": "INFO", "service": "observable-agent", "instance": "bc825ceafa2f", "event": "http_request", "trace_id": "963bedadf99b2d33f9620b2f3df97d28", "span_id": "c908ce9f38223afa", "request_id": "923f26510a9c", "method": "POST", "route": "/ask", "status": 200, "ms": 1766.9}
+```
 
+Trace lỗi: `trace_id` `b821faa6dc93e61c38349fa9c4090441`, trả 503 sau 106.3 ms:
+
+```json
+{"ts": "2026-11-26T09:28:10.219505+00:00", "level": "INFO", "service": "observable-agent", "instance": "bc825ceafa2f", "event": "llm_error", "trace_id": "b821faa6dc93e61c38349fa9c4090441", "span_id": "ced3698efad3db9b", "request_id": "73683d699161", "error": "Upstream LLM error: 503 Service Unavailable (mock)"}
+{"ts": "2026-11-26T09:28:10.219774+00:00", "level": "INFO", "service": "observable-agent", "instance": "bc825ceafa2f", "event": "http_request", "trace_id": "b821faa6dc93e61c38349fa9c4090441", "span_id": "ced3698efad3db9b", "request_id": "73683d699161", "method": "POST", "route": "/ask", "status": 503, "ms": 106.3}
 ```
 
 ---
 
 ## 5. Benchmark scaling (production, Locust headless, 100 users, 2 phút)
 
+Số liệu dòng `POST /ask` trong `production/benchmark-results/scale_1_stats.csv` và `scale_3_stats.csv`.
+
 | Số instance | RPS | p50 (ms) | p95 (ms) | p99 (ms) | Failures |
 |---|---|---|---|---|---|
-| 1 | | | | | |
-| 3 | | | | | |
+| 1 | 60.22 | 190 | 230 | 1700 | 64 / 7191 (0.89%) |
+| 3 | 60.27 | 190 | 220 | 1700 | 71 / 7192 (0.99%) |
 
-**Giải thích kết quả:** Scale có cải thiện p95 không? Nút thắt nằm ở đâu?
-
-...
+**Giải thích kết quả:** Scale lên 3 instance gần như không đổi gì: RPS giữ ~60, p95 chỉ giảm 230 → 220 ms, p99 vẫn 1700 ms. Nút thắt không nằm ở agent: mỗi user Locust chờ 0.5–2 s giữa 2 request (`wait_time = between(0.5, 2)`), nên 100 user chỉ tạo ra khoảng 60 req/s cố định, 1 instance async đã xử lý đủ. Latency do mock LLM quyết định (~190 ms, cộng 3% request chậm ~1.7 s tạo nên p99), thêm instance không làm LLM nhanh hơn. Lỗi ~1% là lỗi 503 giả lập của upstream LLM. Muốn thấy lợi ích của scale cần tải vượt khả năng 1 instance (nhiều user hơn hoặc bỏ `wait_time`).
 
 ---
 
 ## 6. Kết luận
 
 - 3 điều bạn học được về benchmark & observability:
-  1. ...
-  2. ...
-  3. ...
+  1. Average che giấu tail latency: 3% request chậm đẩy p99 từ 225 lên 1695 ms trong khi avg chỉ tăng 30 ms, nên SLO phải đặt theo p95/p99.
+  2. So sánh phiên bản theo "cost / câu đúng" chứ không theo "cost / câu": v2 đắt hơn mỗi câu nhưng rẻ hơn ~11 lần trên mỗi câu đúng.
+  3. Metrics cho biết có vấn đề, trace cho biết vấn đề ở bước nào, log có `trace_id` nối 2 thứ lại; alert có `for:` nên luôn có độ trễ (46 s, 91 s) cần tính vào thời gian phản ứng.
 - Nếu đưa agent này lên production thật, bạn sẽ thêm metric / alert nào nữa?
 
-...
+Alert theo accuracy của eval định kỳ (bắt được lỗi kiểu thí nghiệm E), alert khi `agent_info{version}` thay đổi ngoài lịch deploy, burn-rate alert theo error budget của SLO (thay vì ngưỡng cố định), metric tỉ lệ retrieval không tìm thấy tài liệu, và alert saturation (`agent_in_flight_requests`, CPU/memory container).
